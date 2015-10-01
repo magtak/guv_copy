@@ -1,0 +1,279 @@
+<?php
+
+function guv_copy_schema_form_alter($form, &$form_state){
+  //kprint_r($form);
+}
+
+function guv_copy_schema_menu() {
+  $items['guv/index/copy'] = array(
+    'title' => 'Copy Schema',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('guv_copy_schema_form'),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+function guv_copy_schema_form($form, &$form_state) {
+  
+  $form['source'] = array(
+    '#title' => t('Source index'), 
+    '#maxlength' => 40, 
+    '#type' => 'textfield',
+    //'#autocomplete_path' => "node_reference/autocomplete/node/guv_index/source",
+    //'#value_callback' => 'node_reference_autocomplete_value',
+    //'#default_value' => '',
+    '#description' => 'Enter your source SOLR index ID',
+    '#required' => TRUE,
+  );
+  $form['targets'] = array(
+    '#type' => 'textarea',
+    '#description' => 'Enter comma-separated SOLR index IDs. The configuration from source will be copied on them',
+    '#required' => TRUE,
+  );
+  $form['reason'] = array(
+    '#type' => 'textfield',
+    '#required' => TRUE,
+    '#description' => 'Paste your ZD or Jira ticket link and/or comment on why this is happening',
+
+  );
+  $form['submit'] = array('#type' => 'submit', '#value' => t('Submit'));
+  $form['#validate'][] = 'guv_copy_schema_validate';
+  $form['#submit'][] = 'guv_copy_schema_submit';
+
+  return $form;
+}
+
+function guv_copy_schema_validate($form, &$form_state) {
+  return TRUE;
+}
+
+function guv_copy_schema_submit($form, &$form_state) {
+  $source = get_nid_from_core_id($form_state['values']['source']);
+  $target_ids = str_replace(' ', '', $form_state['values']['targets']);
+  $target_ids = explode(',' , $target_ids);
+  $targets = array();
+  foreach ($target_ids as $key => $index_id) {
+    $targets[] = get_nid_from_core_id($index_id);
+  }
+  $reason = $form_state['values']['reason'];
+
+  doCopy($source, $targets, $reason);
+}
+
+
+function doCopy($source, $targets , $reason) {
+  // TODO:
+  // * REMOVE files that are in the node, but not in the folder?
+  // * Compare current and new files, diff them?
+  //EDIT THIS
+  // Save killswitch.
+  // $save = true;
+  // First part of the revision log line to be saved with each node revision.
+  //$opening_revision_message = "Ticket z12345: script run.";
+  // Core IDs to process.
+  // $core_ids = file('/mnt/tmp/cores2.txt', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+  // Souce files to import.
+  // $files_folder = '/mnt/tmp/test-upload-files';
+  // Prompt to continue
+  // echo "SCRIPT SETTINGS:\n";
+  // echo "  Revision message: $opening_revision_message\n";
+  // echo "             Cores: " . implode(", ", $core_ids) . "\n";
+  // echo "      Files folder: $files_folder\n";
+  // echo "             Files: " . implode("  ", scandir($files_folder)) . "\n";
+  // echo "\n";
+  // echo "ARE YOU SURE you want to do this?  Type 'yes' to continue: ";
+  // $handle = fopen ("php://stdin","r");
+  // $line = fgets($handle);
+  // if (trim($line) != 'yes'){
+  //     echo "ABORTING!\n";
+  //     exit;
+  // }
+  // echo "\n";
+  // echo "Thank you, continuing...\n";
+  // Some other constants
+  $content_type = 'guv_index';
+  $fieldname = 'field_upload_file';
+  // Get the full file paths for all the source files.
+  $source = node_load($source);
+  //TODO: IMPLEMENT THIS FUNCTION!
+  
+
+  // Process each of the cores given.
+  foreach ($targets as $nid) {
+    if (!$nid) {
+      break;
+    }
+    $node = node_load($nid);
+    if (!$node) {
+      drupal_set_message("Could not node_load($nid)");
+      break;
+    }
+    drupal_set_message("Found core $core_id at " . get_node_url($node));
+
+    // Attach the file file data
+    $added_files = array();
+    foreach ($source->{$fieldname}[LANGUAGE_NONE] as $file) {
+      
+      $uri = $file['uri'];
+      $file_path = drupal_realpath($uri);
+      
+      $ok = add_file_to_index($node, $file, $fieldname);
+      
+      if (!$ok) {
+        drupal_set_message("Error while trying to add file to node {$node->nid}.");
+        break;
+      }
+      $added_files[] = basename($file_path);
+    }
+    if (!$added_files) {
+      drupal_set_message("No files changed, so not saving");
+      continue;
+    }
+    $revision_msg = $reason  . ' - Added files: ' . implode(', ', $added_files);
+    add_revision_to_node_object($node, $revision_msg);
+    
+    node_save($node);
+    drupal_set_message("Saved node as new revision " . $node->vid . ": " . get_node_url($node));
+  }
+}
+
+
+function get_node_url($node) {
+  return url("node/{$node->nid}", array('absolute' => true));
+}
+
+function get_filenames_from_folder($filepath) {
+  echo "Scanning $filepath for files...";
+  $files = scandir($filepath);
+  // Remove files that don't have certain extensions
+  foreach ($files as $i => $file) {
+    $ext = pathinfo($file, PATHINFO_EXTENSION);
+    if (substr($file, 0, 1) == ".") {
+      unset($files[$i]);
+    }
+    elseif ($ext != "txt" && $ext != "xml") {
+      echo "  Ignoring file $file\n because of extension\n";
+      unset($files[$i]);
+    }
+  }
+  foreach ($files as &$file) {
+    $file = $filepath . '/' . $file;
+  }
+  echo " " . count($files) . " applicable files found.";
+  return $files;
+}
+
+function add_revision_to_node_object($node, $message) {
+  // Add log line
+  $node->revision = 1;
+  $node->log = $message;
+}
+
+function get_nid_from_core_id($core_id) {
+  $core_id = $core_id;
+  $sql = "SELECT nid FROM {node} WHERE title LIKE '$core_id%'";
+
+  $query = new EntityFieldQuery();
+  $nodes = $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'guv_index')
+    ->fieldCondition('field_id', 'value' , $core_id, '=      ')
+    ->execute();
+  
+  $nids = array_keys($nodes['node']);
+
+  if (count($nids)<1) {
+    drupal_set_message("Could not find ''$core_id' as node title.");
+    return false;
+  }
+  elseif (count($nids)>1) {
+    drupal_set_message("Found more than one entry for ''$core_id' as node title: " . implode(", ", $nids));
+    return false;
+  }
+  return $nids[0];
+}
+
+/**
+ * Returns the array index value (or false) of a file field, where that value
+ * matches the given filename's basename.
+ */
+
+function find_matching_file_in_node($node, $file, $fieldname) {
+  require_once 'includes/file.inc';
+  if (!isset($node->{$fieldname})) {
+    return 0;
+  }
+  if (!isset($node->{$fieldname}[$node->language])) {
+    return 0;
+  }
+
+  $uri = $file['uri'];
+  $file_path = drupal_realpath($uri);
+  $base_filename = basename($file_path);
+
+  $index = null;
+  foreach ($node->{$fieldname}[$node->language] as $index => $value) {
+    if ($value['filename'] === $base_filename) {
+      echo "$fieldname has $base_filename as index $index\n";
+      return $index;
+    }
+  }
+  if ($index === null) {
+    return 0;
+  }
+  else {
+    // If not found, return the next-largest index!
+    drupal_set_message("$fieldname does not have $base_filename; adding it as item " . ($index + 2) . " (index==" . ($index+1) . ") on field $fieldname");
+    return $index + 1;
+  }
+}
+
+function add_file_to_index($node, $file, $fieldname) {
+
+  //TODO change this or add it as a constant
+
+  
+  if (!isset($node->field_id['und'][0]['value'])) {
+    drupal_set_message("Node {$node->nid} does not have required field_id field!");
+    return false;
+  }
+  $uri = $file['uri'];
+  $file_path = drupal_realpath($uri);
+  
+  // $index means the file array index here
+  $index = find_matching_file_in_node($node, $file, $fieldname);
+
+
+  // We will save file under this location.
+  // E.g. public://myfiles/
+  $destination = file_default_scheme() . '://search_configs/' . $node->field_id['und'][0]['value'] . '/';
+
+ 
+  // Make sure destination directory exists before moving files to that path.
+  // This will create directory if it does not exist.
+  file_prepare_directory($destination, FILE_CREATE_DIRECTORY);
+  // Save file.
+  $file = file_save_data(file_get_contents($file_path), $destination . basename($file_path), FILE_EXISTS_RENAME);
+  $file->uid = $node->uid;
+  $file->display = 1;
+  $file->description = "";
+  #$file->filename = pathinfo($file_path, PATHINFO_BASENAME);
+  #$file->filemime = file_get_mimetype($file_path);
+  // Make it permanent, otherwise it will get deleted later.
+  #$file->status = FILE_STATUS_PERMANENT;
+  #echo "Debug: File object:\n";
+  #print_r($file);
+  // Save file object to make it a 'managed file'.
+  file_save($file);
+
+  // Now attach file to the file field.
+  if (!isset($node->{$fieldname})) {
+    $node->{$fieldname} = array($node->language => array());
+  }
+  if (!isset($node->{$fieldname}[$node->language])) {
+    $node->{$fieldname}[$node->language] = array();
+  }
+  $node->{$fieldname}[$node->language][$index] = (array)$file;
+  return true;
+}

@@ -1,0 +1,3 @@
+name = Governor - copy schema configuration set
+description = "Copies the whole schema configuration (all xml/txt files) from one index to another"
+core = 7.x
