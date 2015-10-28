@@ -1,5 +1,14 @@
 <?php
 
+/**
+ * @file
+ * Guv Copy module.
+ */
+
+define('GUV_COPY_UPLOAD_FIELDNAME', 'field_upload_file');
+define('GUV_COPY_COREID_FIELDNAME', 'field_id');
+define('GUV_COPY_NODETYPE', 'guv_index');
+
 function guv_copy_schema_menu() {
   $items['guv/index/copy'] = array(
     'title' => 'Copy Schema',
@@ -25,14 +34,14 @@ function guv_copy_schema_form($form, &$form_state) {
   if(isset($form_state['storage']['asked_confirm']) && $form_state['storage']['asked_confirm']) {
     $source_nid = get_nid_from_core_id($form_state['values']['source']);
     $source = node_load($source_nid);
-    $source_index_id = $source->field_id[LANGUAGE_NONE][0]['value'];
+    $source_index_id = $source->{GUV_COPY_COREID_FIELDNAME}[LANGUAGE_NONE][0]['value'];
     $target_ids = str_replace(' ', '', $form_state['values']['targets']);
     $target_ids = explode(',' , $target_ids);
     $target_html = '';
     foreach ($target_ids as $key => $index_id) {
       $target = node_load(get_nid_from_core_id($index_id));
       if($target){
-        $target_html .= $target->field_id[LANGUAGE_NONE][0]['value'];
+        $target_html .= $target->{GUV_COPY_COREID_FIELDNAME}[LANGUAGE_NONE][0]['value'];
         (int)$key < count($target_ids)-1 ? $target_html .= ', ' : 1;
       }
     }
@@ -142,11 +151,8 @@ function doCopy($source, $targets , $reason) {
   // echo "\n";
   // echo "Thank you, continuing...\n";
   // Some other constants
-  $content_type = 'si_search_core';
-  $fieldname = 'field_upload_file';
   // Get the full file paths for all the source files.
   $source = node_load($source);
-    
 
   // Process each of the cores given.
   foreach ($targets as $nid) {
@@ -158,18 +164,18 @@ function doCopy($source, $targets , $reason) {
       drupal_set_message("Could not node_load($nid)");
       break;
     }
-    $source_index_id = $source->field_id[LANGUAGE_NONE][0]['value'];
+    $source_index_id = $source->{GUV_COPY_COREID_FIELDNAME}[LANGUAGE_NONE][0]['value'];
     drupal_set_message("Found core $source_index_id at " . get_node_url($node));
 
     // Attach the file file data
     $added_files = array();
-    foreach ($source->{$fieldname}[LANGUAGE_NONE] as $file) {
+    foreach ($source->{GUV_COPY_UPLOAD_FIELDNAME}[LANGUAGE_NONE] as $file) {
       
       $uri = $file['uri'];
       $filename = $file['origname'];
       $file_path = drupal_realpath($uri);
       
-      $ok = add_file_to_index($node, $file, $fieldname, $filename);
+      $ok = add_file_to_index($node, $file, GUV_COPY_UPLOAD_FIELDNAME, $filename);
       
       if (!$ok) {
         drupal_set_message("Error while trying to add file to node {$node->nid}.");
@@ -194,6 +200,9 @@ function get_node_url($node) {
   return url("node/{$node->nid}", array('absolute' => true));
 }
 
+/**
+ * Unused function
+ *
 function get_filenames_from_folder($filepath) {
   echo "Scanning $filepath for files...";
   $files = scandir($filepath);
@@ -214,6 +223,7 @@ function get_filenames_from_folder($filepath) {
   echo " " . count($files) . " applicable files found.";
   return $files;
 }
+ **/
 
 function add_revision_to_node_object($node, $message) {
   // Add log line
@@ -225,18 +235,18 @@ function get_nid_from_core_id($core_id) {
 
   $query = new EntityFieldQuery();
   $nodes = $query->entityCondition('entity_type', 'node')
-    ->entityCondition('bundle', 'si_search_core')
-    ->fieldCondition('field_id', 'value' , $core_id, '=      ')
+    ->entityCondition('bundle', GUV_COPY_NODETYPE)
+    ->fieldCondition(GUV_COPY_COREID_FIELDNAME, 'value' , $core_id, '=      ')
     ->execute();
   
   $nids = array_keys($nodes['node']);
 
   if (count($nids)<1) {
-    drupal_set_message("Could not find '$core_id' as node title.");
+    drupal_set_message('Could not find "$core_id" as node title.');
     return false;
   }
   elseif (count($nids)>1) {
-    drupal_set_message("Found more than one entry for ''$core_id' as node title: " . implode(", ", $nids));
+    drupal_set_message('Found more than one entry for "$core_id" as node title: ' . implode(', ', $nids));
     return false;
   }
   return $nids[0];
@@ -248,7 +258,6 @@ function get_nid_from_core_id($core_id) {
  */
 
 function find_matching_file_in_node($node, $file, $fieldname) {
-  require_once 'includes/file.inc';
   if (!isset($node->{$fieldname})) {
     return 0;
   }
@@ -283,8 +292,8 @@ function add_file_to_index($node, $file, $fieldname, $filename) {
   //TODO change this or add it as a constant
 
   
-  if (!isset($node->field_id['und'][0]['value'])) {
-    drupal_set_message("Node {$node->nid} does not have required field_id field!");
+  if (!isset($node->{GUV_COPY_COREID_FIELDNAME}['und'][0]['value'])) {
+    drupal_set_message("Node {$node->nid} does not have required " . GUV_COPY_COREID_FIELDNAME . " field!");
     return false;
   }
   $uri = $file['uri'];
@@ -296,7 +305,7 @@ function add_file_to_index($node, $file, $fieldname, $filename) {
 
   // We will save file under this location.
   // E.g. public://myfiles/
-  $destination = file_default_scheme() . '://search_configs/' . $node->field_id['und'][0]['value'] . '/';
+  $destination = file_default_scheme() . '://search_configs/' . $node->{GUV_COPY_COREID_FIELDNAME}['und'][0]['value'] . '/';
 
  
   // Make sure destination directory exists before moving files to that path.
