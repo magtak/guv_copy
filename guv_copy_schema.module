@@ -8,24 +8,34 @@ function guv_copy_schema_menu() {
     'access callback' => TRUE,
     'type' => MENU_CALLBACK,
   );
+  $items['guv/index/autocomplete'] = array(
+      'title' => 'Autocomplete for guv_copy_schema',
+      'page callback' => 'guv_copy_schema_autocomplete',
+      'access callback' => TRUE,  //TODO
+      'type' => MENU_CALLBACK
+    );
   return $items;
 }
 
 function guv_copy_schema_form($form, &$form_state) {
 
-  if(isset( $form_state['input'] ) && $form_state['input']['ask_confirm']) {
+  if(isset( $form_state['input'] ) && isset($form_state['input']['ask_confirm']) && $form_state['input']['ask_confirm']) {
     $source_nid = get_nid_from_core_id($form_state['values']['source']);
     $source = node_load($source_nid);
     $source_index_id = $source->field_id[LANGUAGE_NONE][0]['value'];
     $target_ids = str_replace(' ', '', $form_state['values']['targets']);
     $target_ids = explode(',' , $target_ids);
     $targets = array();
-    $target_html = '<ul>';
+    $target_html = '';
     foreach ($target_ids as $key => $index_id) {
       $targets[] = node_load(get_nid_from_core_id($index_id));
-      $target_html .= '<li>' . $targets[$key]->field_id[LANGUAGE_NONE][0]['value'] . '</li>';
+      $target_html .= $targets[$key]->field_id[LANGUAGE_NONE][0]['value'] . ', ';
     }
-    $target_html .= '</ul>';
+    // https://www.drupal.org/node/470834
+    // Tell the submit handler to process the form
+    $form['process'] = array('#type' => 'hidden', '#value' => 'true');
+    // Make sure the form redirects in the end
+    $form['destination'] = array('#type' => 'hidden', '#value' => 'guv/index/copy');
 
     return confirm_form($form, 
       t('Are you sure you want to copy the schema configurations from %source_index_id to the following? <br> %target_html', array('%source_index_id' => $source_index_id, '%target_html' => $target_html)), 
@@ -44,12 +54,53 @@ function guv_copy_schema_form($form, &$form_state) {
       '#type' => 'textfield',
       '#description' => 'Enter your source SOLR index ID',
       '#required' => TRUE,
+      '#autocomplete_path' => 'guv/index/autocomplete',
     );
     $form['targets'] = array(
       '#type' => 'textarea',
       '#description' => 'Enter comma-separated SOLR index IDs. The configuration from source will be copied on them',
       '#required' => TRUE,
     );
+
+    /*
+    $form['targets'] = array(
+      '#title' => 'Target indexes',
+      '#type' => 'container',
+      '#tree' => TRUE,
+      '#prefix' => '<div id="targets"><label>Target indexes</label>',
+      '#suffix' => '</div>',
+    );
+    
+    $form['add_target'] = array(
+      '#type' => 'button',
+      '#value' => t('Add Another'),
+      '#submit' => array('guv_copy_schema_add_target_add'),
+      '#ajax' => array(
+        'callback' => 'guv_copy_schema_add_target_callback',
+        'wrapper' => 'targets',
+      ),
+    );
+    if (empty($form_state['num_names']) || $form_state['num_names'] == 0) {
+      $form_state['num_names'] = 1;
+    }
+
+    for ($i = 0; $i < $form_state['num_names']; $i++) {
+        $form['targets'][$i] = array(
+          '#prefix' => '<div class="single-target">',
+          '#suffix' => '</div>',
+          '#tree' => TRUE,
+        );
+        $form['targets'][$i]['target'] = array(
+          '#id' => 'target-' . $i,
+          '#type' => 'textfield',
+          '#title' => 'Index ID',
+          '#maxlength' => 40,
+          //'#description' => 'Enter comma-separated SOLR index IDs. The configuration from source will be copied on them',
+          '#required' => TRUE,
+          '#autocomplete_path' => 'guv/index/autocomplete',
+        );
+    }
+    */
     $form['reason'] = array(
       '#type' => 'textfield',
       '#required' => TRUE,
@@ -59,7 +110,9 @@ function guv_copy_schema_form($form, &$form_state) {
     $form['submit'] = array('#type' => 'submit', '#value' => t('Submit'));
     $form['#validate'][] = 'guv_copy_schema_validate';
     $form['#submit'][] = 'guv_copy_schema_submit';
-    //$form['#submit'][] = 'guv_copy_schema_form_confirm_submit';
+
+    //kprint_r($form);
+//kprint_r($form_state);
     return $form;
     }
     
@@ -70,13 +123,14 @@ function guv_copy_schema_validate($form, &$form_state) {
 }
 
 function guv_copy_schema_submit($form, &$form_state) {
-  //kprint_r($form_state);die;
-  if ( $form_state['clicked_button']['#value'] == 'Submit' ) {
+  if (isset($form_state['input']) && isset($form_state['input']['ask_confirm']) && $form_state['input']['ask_confirm']){
+
     $form_state['rebuild'] = TRUE;
     $form_state['input']['ask_confirm'] = TRUE;
+
   }
   else{
-    //TODO: a lot of code repetition here but I'm too drunk to care
+    //TODO: a lot of code repetition here
     $source = get_nid_from_core_id($form_state['values']['source']);
     $target_ids = str_replace(' ', '', $form_state['values']['targets']);
     $target_ids = explode(',' , $target_ids);
@@ -85,11 +139,22 @@ function guv_copy_schema_submit($form, &$form_state) {
       $targets[] = get_nid_from_core_id($index_id);
     }
     $reason = $form_state['values']['reason'];
-
     doCopy($source, $targets, $reason); 
   }
  
 }
+
+function guv_copy_schema_autocomplete($string) {
+  $matches = array();
+  if ($string) {
+    $result = db_query("SELECT n.nid, n.title, fid.field_id_value FROM node n INNER JOIN field_data_field_id fid on fid.entity_id=n.nid WHERE fid.field_id_value LIKE '%$string%' AND n.status=1");
+    while ($record = $result->fetchAssoc()) {
+      $matches[$record['field_id_value']] = check_plain($record['field_id_value']);
+    }
+  }
+  drupal_json_output($matches);
+}
+
 
 function doCopy($source, $targets , $reason) {
   // TODO:
@@ -121,12 +186,11 @@ function doCopy($source, $targets , $reason) {
   // echo "\n";
   // echo "Thank you, continuing...\n";
   // Some other constants
-  $content_type = 'guv_index';
+  $content_type = 'si_search_core';
   $fieldname = 'field_upload_file';
   // Get the full file paths for all the source files.
   $source = node_load($source);
-  //TODO: IMPLEMENT THIS FUNCTION!
-  
+    
 
   // Process each of the cores given.
   foreach ($targets as $nid) {
@@ -138,7 +202,8 @@ function doCopy($source, $targets , $reason) {
       drupal_set_message("Could not node_load($nid)");
       break;
     }
-    drupal_set_message("Found core $core_id at " . get_node_url($node));
+    $source_index_id = $source->field_id[LANGUAGE_NONE][0]['value'];
+    drupal_set_message("Found core $source_index_id at " . get_node_url($node));
 
     // Attach the file file data
     $added_files = array();
@@ -200,11 +265,10 @@ function add_revision_to_node_object($node, $message) {
 }
 
 function get_nid_from_core_id($core_id) {
-  $core_id = $core_id;
 
   $query = new EntityFieldQuery();
   $nodes = $query->entityCondition('entity_type', 'node')
-    ->entityCondition('bundle', 'guv_index')
+    ->entityCondition('bundle', 'si_search_core')
     ->fieldCondition('field_id', 'value' , $core_id, '=      ')
     ->execute();
   
