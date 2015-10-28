@@ -21,6 +21,8 @@ function guv_copy_schema_form($form, &$form_state) {
   
   $form['#validate'][] = 'guv_copy_schema_validate';
   $form['#submit'][] = 'guv_copy_schema_submit';
+  //we have not yet asked for confirmation
+  //asked_confirm should be TRUE - set by the submit handler
   if(isset($form_state['asked_confirm']) && $form_state['asked_confirm']) {
     $source_nid = get_nid_from_core_id($form_state['values']['source']);
     $source = node_load($source_nid);
@@ -44,6 +46,7 @@ function guv_copy_schema_form($form, &$form_state) {
   }
   
   else{
+    //we have not yet asked for confirmation
     $form_state['asked_confirm'] = FALSE;
     $form['source'] = array(
       '#title' => t('Source index'), 
@@ -82,6 +85,9 @@ function guv_copy_schema_submit($form, &$form_state) {
     //had to pass the original form_state variables in the $_SESSION
     //else they got lost after the confirmation step
     $_SESSION['values'] = $form_state['values'];
+
+    //we have not yet asked for confirmation
+    //setting asked_confirm to TRUE to present the confirmation form isntead.
     $form_state['asked_confirm'] = TRUE;
     $form_state['rebuild'] = TRUE;
 
