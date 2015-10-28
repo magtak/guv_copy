@@ -62,45 +62,6 @@ function guv_copy_schema_form($form, &$form_state) {
       '#required' => TRUE,
     );
 
-    /*
-    $form['targets'] = array(
-      '#title' => 'Target indexes',
-      '#type' => 'container',
-      '#tree' => TRUE,
-      '#prefix' => '<div id="targets"><label>Target indexes</label>',
-      '#suffix' => '</div>',
-    );
-    
-    $form['add_target'] = array(
-      '#type' => 'button',
-      '#value' => t('Add Another'),
-      '#submit' => array('guv_copy_schema_add_target_add'),
-      '#ajax' => array(
-        'callback' => 'guv_copy_schema_add_target_callback',
-        'wrapper' => 'targets',
-      ),
-    );
-    if (empty($form_state['num_names']) || $form_state['num_names'] == 0) {
-      $form_state['num_names'] = 1;
-    }
-
-    for ($i = 0; $i < $form_state['num_names']; $i++) {
-        $form['targets'][$i] = array(
-          '#prefix' => '<div class="single-target">',
-          '#suffix' => '</div>',
-          '#tree' => TRUE,
-        );
-        $form['targets'][$i]['target'] = array(
-          '#id' => 'target-' . $i,
-          '#type' => 'textfield',
-          '#title' => 'Index ID',
-          '#maxlength' => 40,
-          //'#description' => 'Enter comma-separated SOLR index IDs. The configuration from source will be copied on them',
-          '#required' => TRUE,
-          '#autocomplete_path' => 'guv/index/autocomplete',
-        );
-    }
-    */
     $form['reason'] = array(
       '#type' => 'textfield',
       '#required' => TRUE,
