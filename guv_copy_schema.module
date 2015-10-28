@@ -81,10 +81,8 @@ function guv_copy_schema_validate($form, &$form_state) {
 function guv_copy_schema_submit($form, &$form_state) {
   if (isset($form_state['asked_confirm']) && $form_state['asked_confirm'] === FALSE) {
     var_dump(isset($form_state['input']['asked_confirm']) && $form_state['input']['asked_confirm'] === FALSE);
-    
-    //had to pass the original form_state variables in the $_SESSION
-    //else they got lost after the confirmation step
-    $_SESSION['values'] = $form_state['values'];
+  
+    $form_state['storage']['values'] = $form_state['values'];
 
     //we have not yet asked for confirmation
     //setting asked_confirm to TRUE to present the confirmation form isntead.
@@ -93,16 +91,15 @@ function guv_copy_schema_submit($form, &$form_state) {
 
   }
   else{ 
-    //retrieving original form values from $_SESSION
-    $form_state['values'] = $_SESSION['values'];
-    $source = get_nid_from_core_id($form_state['values']['source']);
-    $target_ids = str_replace(' ', '', $form_state['values']['targets']);
+    $form_state['storage']['values'] = $_SESSION['values'];
+    $source = get_nid_from_core_id($form_state['storage']['values']['source']);
+    $target_ids = str_replace(' ', '', $form_state['storage']['values']['targets']);
     $target_ids = explode(',' , $target_ids);
     $targets = array();
     foreach ($target_ids as $key => $index_id) {
       $targets[] = get_nid_from_core_id($index_id);
     }
-    $reason = $form_state['values']['reason'];
+    $reason = $form_state['storage']['values']['reason'];
     doCopy($source, $targets, $reason); 
   }
  
