@@ -32,14 +32,14 @@ function guv_copy_schema_form($form, &$form_state) {
   //we have not yet asked for confirmation
   //asked_confirm should be TRUE - set by the submit handler
   if(isset($form_state['storage']['asked_confirm']) && $form_state['storage']['asked_confirm']) {
-    $source_nid = get_nid_from_core_id($form_state['values']['source']);
+    $source_nid = _guv_schema_get_nid_from_core_id($form_state['values']['source']);
     $source = node_load($source_nid);
     $source_index_id = $source->{GUV_COPY_COREID_FIELDNAME}[LANGUAGE_NONE][0]['value'];
     $target_ids = str_replace(' ', '', $form_state['values']['targets']);
     $target_ids = explode(',' , $target_ids);
     $target_html = '';
     foreach ($target_ids as $key => $index_id) {
-      $target = node_load(get_nid_from_core_id($index_id));
+      $target = node_load(_guv_schema_get_nid_from_core_id($index_id));
       if($target){
         $target_html .= $target->{GUV_COPY_COREID_FIELDNAME}[LANGUAGE_NONE][0]['value'];
         (int)$key < count($target_ids)-1 ? $target_html .= ', ' : 1;
@@ -96,15 +96,15 @@ function guv_copy_schema_submit($form, &$form_state) {
   }
   else{ 
     $form_state['storage']['values'] = $_SESSION['values'];
-    $source = get_nid_from_core_id($form_state['storage']['values']['source']);
+    $source = _guv_schema_get_nid_from_core_id($form_state['storage']['values']['source']);
     $target_ids = str_replace(' ', '', $form_state['storage']['values']['targets']);
     $target_ids = explode(',' , $target_ids);
     $targets = array();
     foreach ($target_ids as $key => $index_id) {
-      $targets[] = get_nid_from_core_id($index_id);
+      $targets[] = _guv_schema_get_nid_from_core_id($index_id);
     }
     $reason = $form_state['storage']['values']['reason'];
-    doCopy($source, $targets, $reason); 
+    _guv_schema_do_copy($source, $targets, $reason);
   }
  
 }
@@ -121,7 +121,7 @@ function guv_copy_schema_autocomplete($string) {
 }
 
 
-function doCopy($source, $targets , $reason) {
+function _guv_schema_do_copy($source, $targets , $reason) {
   // TODO:
   // * REMOVE files that are in the node, but not in the folder?
   // * Compare current and new files, diff them?
@@ -165,7 +165,7 @@ function doCopy($source, $targets , $reason) {
       break;
     }
     $source_index_id = $source->{GUV_COPY_COREID_FIELDNAME}[LANGUAGE_NONE][0]['value'];
-    drupal_set_message("Found core $source_index_id at " . get_node_url($node));
+    drupal_set_message("Found core $source_index_id at " . _guv_schema_get_node_url($node));
 
     // Attach the file file data
     $added_files = array();
@@ -175,7 +175,7 @@ function doCopy($source, $targets , $reason) {
       $filename = $file['origname'];
       $file_path = drupal_realpath($uri);
       
-      $ok = add_file_to_index($node, $file, GUV_COPY_UPLOAD_FIELDNAME, $filename);
+      $ok = _guv_schema_add_file_to_index($node, $file, GUV_COPY_UPLOAD_FIELDNAME, $filename);
       
       if (!$ok) {
         drupal_set_message("Error while trying to add file to node {$node->nid}.");
@@ -188,15 +188,15 @@ function doCopy($source, $targets , $reason) {
       continue;
     }
     $revision_msg = $reason  . ' - Added files: ' . implode(', ', $added_files);
-    add_revision_to_node_object($node, $revision_msg);
+    _guv_schema_add_revision_to_node_object($node, $revision_msg);
     
     node_save($node);
-    drupal_set_message("Saved node as new revision " . $node->vid . ": " . get_node_url($node));
+    drupal_set_message("Saved node as new revision " . $node->vid . ": " . _guv_schema_get_node_url($node));
   }
 }
 
 
-function get_node_url($node) {
+function _guv_schema_get_node_url($node) {
   return url("node/{$node->nid}", array('absolute' => true));
 }
 
@@ -225,13 +225,13 @@ function get_filenames_from_folder($filepath) {
 }
  **/
 
-function add_revision_to_node_object($node, $message) {
+function _guv_schema_add_revision_to_node_object($node, $message) {
   // Add log line
   $node->revision = 1;
   $node->log = $message;
 }
 
-function get_nid_from_core_id($core_id) {
+function _guv_schema_get_nid_from_core_id($core_id) {
 
   $query = new EntityFieldQuery();
   $nodes = $query->entityCondition('entity_type', 'node')
@@ -257,7 +257,7 @@ function get_nid_from_core_id($core_id) {
  * matches the given filename's basename.
  */
 
-function find_matching_file_in_node($node, $file, $fieldname) {
+function _guv_schema_find_matching_file_in_node($node, $file, $fieldname) {
   if (!isset($node->{$fieldname})) {
     return 0;
   }
@@ -287,7 +287,7 @@ function find_matching_file_in_node($node, $file, $fieldname) {
   }
 }
 
-function add_file_to_index($node, $file, $fieldname, $filename) {
+function _guv_schema_add_file_to_index($node, $file, $fieldname, $filename) {
 
   //TODO change this or add it as a constant
 
@@ -300,7 +300,7 @@ function add_file_to_index($node, $file, $fieldname, $filename) {
   $file_path = drupal_realpath($uri);
   
   // $index means the file array index here
-  $index = find_matching_file_in_node($node, $file, $fieldname);
+  $index = _guv_schema_find_matching_file_in_node($node, $file, $fieldname);
 
 
   // We will save file under this location.
