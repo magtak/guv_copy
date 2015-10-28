@@ -110,7 +110,13 @@ function guv_copy_schema_submit($form, &$form_state) {
 function guv_copy_schema_autocomplete($string) {
   $matches = array();
   if ($string) {
-    $result = db_query("SELECT n.nid, n.title, fid.field_id_value FROM node n INNER JOIN field_data_field_id fid on fid.entity_id=n.nid WHERE fid.field_id_value LIKE '%$string%' AND n.status=1");
+    $escaped_string = "%" . preg_replace('/[^A-Z0-9-]*/', '', $string, -1) . "%";
+    $fieldname = GUV_COPY_COREID_FIELDNAME;
+    $result = db_query(
+      "SELECT n.nid, n.title, fid.{$fieldname}_value field_id_value FROM {node} n"
+      . "  INNER JOIN {field_data_{$fieldname}} fid ON fid.entity_id=n.nid"
+      . "  WHERE field_id_value LIKE '$escaped_string' AND n.status=1"
+    );
     while ($record = $result->fetchAssoc()) {
       $matches[$record['field_id_value']] = check_plain($record['field_id_value']);
     }
