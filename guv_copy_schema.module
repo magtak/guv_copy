@@ -7,7 +7,7 @@
 
 define('GUV_COPY_UPLOAD_FIELDNAME', 'field_upload_file');
 define('GUV_COPY_COREID_FIELDNAME', 'field_id');
-define('GUV_COPY_NODETYPE', 'guv_index');
+define('GUV_COPY_NODETYPE', 'si_search_core');  #guv_index for John Takousis
 
 function guv_copy_schema_menu() {
   $items['guv/index/copy'] = array(
@@ -32,23 +32,21 @@ function guv_copy_schema_form($form, &$form_state) {
   // We have not yet asked for confirmation
   // asked_confirm should be TRUE - set by the submit handler
   if (isset($form_state['storage']['asked_confirm']) && $form_state['storage']['asked_confirm']) {
-    $source_nid = _guv_schema_get_nid_from_core_id($form_state['values']['source']);
-    $source = node_load($source_nid);
+    $source_nids = _guv_schema_get_nids_from_core_id($form_state['values']['source']);
+    $nid = $source_nids[0];
+    $source = node_load($nid);
     $source_index_id = $source->{GUV_COPY_COREID_FIELDNAME}[LANGUAGE_NONE][0]['value'];
-    $target_ids = str_replace(' ', '', $form_state['values']['targets']);
-    $target_ids = explode(',' , $target_ids);
-    $target_html = '';
-    foreach ($target_ids as $key => $index_id) {
-      $target = node_load(_guv_schema_get_nid_from_core_id($index_id));
-      if($target){
-        $target_html .= $target->{GUV_COPY_COREID_FIELDNAME}[LANGUAGE_NONE][0]['value'];
-        (int)$key < count($target_ids)-1 ? $target_html .= ', ' : 1;
-      }
-    }
+    $target_ids = _guv_copy_split_targets($form_state['values']['targets']);
+    $target_html = theme('item_list', array('items' => $target_ids));
     return confirm_form($form, 
-      t('Are you sure you want to copy the schema configurations from %source_index_id to the following? <br> %target_html', array('%source_index_id' => $source_index_id, '%target_html' => $target_html)), 
-      'guv/index/copy', 
-      t('This action cannot be undone.'), 
+      t(
+        'Are you sure you want to copy the schema configurations from %source_index_id to the following?',
+        array(
+          '%source_index_id' => $source_index_id,
+        )
+      ),
+      'guv/index/copy',
+      $target_html . t('This action cannot be undone.'),
       t('Confirm'), 
       t('Cancel')
     );
@@ -81,7 +79,60 @@ function guv_copy_schema_form($form, &$form_state) {
 }
 
 function guv_copy_schema_validate($form, &$form_state) {
-  return TRUE;
+  // Don't validate again.
+  if ($form_state['storage']['asked_confirm'] == TRUE) {
+    return;
+  }
+  $ok = TRUE;
+  $core_id = $form_state['values']['source'];
+  $nids = _guv_schema_get_nids_from_core_id($core_id);
+  // Validate that we have exactly one result.
+  if (count($nids)<1) {
+    form_set_error('source', 'Could not find "' . $core_id . '".');
+    $ok = FALSE;
+  }
+  elseif (count($nids)>1) {
+    form_set_error('source', 'Found more than one node for "' . $core_id . '".' . implode(', ', $nids));
+    $ok = FALSE;
+  }
+  // Check that the source has files!!
+  if ($ok) {
+    $node = node_load($nids[0]);
+    if (!isset($node->{GUV_COPY_UPLOAD_FIELDNAME}[LANGUAGE_NONE][0])) {
+      form_set_error('source',
+        'The source core "' . $core_id . '" has no custom files!');
+      $ok = FALSE;
+    }
+  }
+
+  // Check only destination if source passed validation.
+  if ($ok) {
+    $form_state['storage']['values']['source_nid'] = $nids[0];
+    $target_ids = _guv_copy_split_targets($form_state['values']['targets']);
+    foreach ($target_ids as $core_id) {
+      $nids = _guv_schema_get_nids_from_core_id($core_id);
+      // Validate that we have exactly one result.
+      if (count($nids) < 1) {
+        form_set_error('targets', 'Could not find "' . $core_id . '".');
+      }
+      elseif (count($nids) > 1) {
+        form_set_error('targets',
+          'Found more than one node for "' . $core_id . '".' . implode(', ', $nids));
+      }
+      elseif ($core_id == $form_state['values']['source']) {
+        form_set_error('targets',
+          'Can not specify "' . $core_id . '" as both origin and destination.');
+      }
+    }
+    $form_state['storage']['values']['target_nids'] = $nids;
+  }
+}
+
+function _guv_copy_split_targets($string) {
+  $string = trim($string);
+  $string = str_replace(' ', '', $string);
+  $target_ids = preg_split('/[,\n\r]+/', $string);
+  return $target_ids;
 }
 
 function guv_copy_schema_submit($form, &$form_state) {
@@ -93,17 +144,16 @@ function guv_copy_schema_submit($form, &$form_state) {
     $form_state['rebuild'] = TRUE;
   }
   else {
-    $form_state['storage']['values'] = $_SESSION['values'];
-    $source = _guv_schema_get_nid_from_core_id($form_state['storage']['values']['source']);
-    $target_ids = str_replace(' ', '',
-      $form_state['storage']['values']['targets']);
-    $target_ids = explode(',', $target_ids);
-    $targets = array();
+    $nids = _guv_schema_get_nids_from_core_id($form_state['storage']['values']['source']);
+    $source_nid = $nids[0];
+    $target_ids = _guv_copy_split_targets($form_state['storage']['values']['targets']);
+    $target_nids = array();
     foreach ($target_ids as $key => $index_id) {
-      $targets[] = _guv_schema_get_nid_from_core_id($index_id);
+      $nids = _guv_schema_get_nids_from_core_id($index_id);
+      $target_nids[] = $nids[0];
     }
     $reason = $form_state['storage']['values']['reason'];
-    _guv_schema_do_copy($source, $targets, $reason);
+    _guv_schema_do_copy($source_nid, $target_nids, $reason);
   }
 }
 
@@ -124,70 +174,37 @@ function guv_copy_schema_autocomplete($string) {
   drupal_json_output($matches);
 }
 
-function _guv_schema_do_copy($source, $targets , $reason) {
-  // TODO:
-  // * REMOVE files that are in the node, but not in the folder?
-  // * Compare current and new files, diff them?
-  //EDIT THIS
-  // Save killswitch.
-  // $save = TRUE;
-  // First part of the revision log line to be saved with each node revision.
-  //$opening_revision_message = "Ticket z12345: script run.";
-  // Core IDs to process.
-  // $core_ids = file('/mnt/tmp/cores2.txt', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-  // Souce files to import.
-  // $files_folder = '/mnt/tmp/test-upload-files';
-  // Prompt to continue
-  // echo "SCRIPT SETTINGS:\n";
-  // echo "  Revision message: $opening_revision_message\n";
-  // echo "             Cores: " . implode(", ", $core_ids) . "\n";
-  // echo "      Files folder: $files_folder\n";
-  // echo "             Files: " . implode("  ", scandir($files_folder)) . "\n";
-  // echo "\n";
-  // echo "ARE YOU SURE you want to do this?  Type 'yes' to continue: ";
-  // $handle = fopen ("php://stdin","r");
-  // $line = fgets($handle);
-  // if (trim($line) != 'yes'){
-  //     echo "ABORTING!\n";
-  //     exit;
-  // }
-  // echo "\n";
-  // echo "Thank you, continuing...\n";
-  // Some other constants
-  // Get the full file paths for all the source files.
-  $source = node_load($source);
+function _guv_schema_do_copy($source_nid, $target_nids, $reason_message) {
+  $source = node_load($source_nid);
 
   // Process each of the cores given.
-  foreach ($targets as $nid) {
+  foreach ($target_nids as $nid) {
     if (!$nid) {
       break;
     }
     $node = node_load($nid);
     if (!$node) {
-      drupal_set_message("Could not node_load($nid)");
+      drupal_set_message("Could not load node with ID $nid!", 'error');
       break;
     }
-    $source_index_id = $source->{GUV_COPY_COREID_FIELDNAME}[LANGUAGE_NONE][0]['value'];
-    drupal_set_message("Found core $source_index_id at " . _guv_schema_get_node_url($node));
+    $dest_index_id = $node->{GUV_COPY_COREID_FIELDNAME}[LANGUAGE_NONE][0]['value'];
+    drupal_set_message("Processing destination core $dest_index_id at " . _guv_schema_get_node_url($node));
 
     // Attach the file file data
     $added_files = array();
     foreach ($source->{GUV_COPY_UPLOAD_FIELDNAME}[LANGUAGE_NONE] as $file) {
-      $uri = $file['uri'];
-      $filename = $file['origname'];
-      $file_path = drupal_realpath($uri);
-      $ok = _guv_schema_add_file_to_index($node, $file, GUV_COPY_UPLOAD_FIELDNAME, $filename);
+      $ok = _guv_schema_add_file_to_index($node, $file, GUV_COPY_UPLOAD_FIELDNAME);
       if (!$ok) {
         drupal_set_message("Error while trying to add file to node {$node->nid}.");
         break;
       }
-      $added_files[] = basename($file_path);
+      $added_files[] = $file['origname'];
     }
     if (!$added_files) {
       drupal_set_message("No files changed, so not saving");
       continue;
     }
-    $revision_msg = $reason  . ' - Added files: ' . implode(', ', $added_files);
+    $revision_msg = $reason_message  . ' - Added files: ' . implode(', ', $added_files);
     _guv_schema_add_revision_to_node_object($node, $revision_msg);
     node_save($node);
     drupal_set_message("Saved node as new revision " . $node->vid . ": " . _guv_schema_get_node_url($node));
@@ -229,24 +246,16 @@ function _guv_schema_add_revision_to_node_object($node, $message) {
   $node->log = $message;
 }
 
-function _guv_schema_get_nid_from_core_id($core_id) {
+function _guv_schema_get_nids_from_core_id($core_id) {
   $query = new EntityFieldQuery();
   $nodes = $query->entityCondition('entity_type', 'node')
     ->entityCondition('bundle', GUV_COPY_NODETYPE)
     ->fieldCondition(GUV_COPY_COREID_FIELDNAME, 'value' , $core_id, '=      ')
     ->execute();
-  $nids = array_keys($nodes['node']);
-
-  // Validate that we have exactly one result.
-  if (count($nids)<1) {
-    drupal_set_message('Could not find "$core_id" as node title.');
-    return FALSE;
+  if (isset($nodes['node'])) {
+    return array_keys($nodes['node']);
   }
-  elseif (count($nids)>1) {
-    drupal_set_message('Found more than one entry for "$core_id" as node title: ' . implode(', ', $nids));
-    return FALSE;
-  }
-  return $nids[0];
+  return array();
 }
 
 /**
@@ -261,13 +270,11 @@ function _guv_schema_find_matching_file_in_node($node, $file, $fieldname) {
   if (!isset($node->{$fieldname}[$node->language])) {
     return 0;
   }
-  $uri = $file['uri'];
-  $file_path = drupal_realpath($uri);
-  $base_filename = basename($file_path);
+  $base_filename = $file['origname'];
   $index = null;
   foreach ($node->{$fieldname}[$node->language] as $index => $value) {
-    if ($value['filename'] === $base_filename) {
-      echo "$fieldname has $base_filename as index $index\n";
+    if ($value['origname'] === $base_filename) {
+      drupal_set_message("Destination already had $base_filename, replacing with new version.");
       return $index;
     }
   }
@@ -276,12 +283,12 @@ function _guv_schema_find_matching_file_in_node($node, $file, $fieldname) {
   }
   else {
     // If not found, return the next-largest index!
-    drupal_set_message("$fieldname does not have $base_filename; adding it as item " . ($index + 2) . " (index==" . ($index+1) . ") on field $fieldname");
+    drupal_set_message("Destination does not have $base_filename, adding it.");
     return $index + 1;
   }
 }
 
-function _guv_schema_add_file_to_index($node, $file, $fieldname, $filename) {
+function _guv_schema_add_file_to_index($node, $file, $fieldname) {
   if (!isset($node->{GUV_COPY_COREID_FIELDNAME}['und'][0]['value'])) {
     drupal_set_message("Node {$node->nid} does not have required " . GUV_COPY_COREID_FIELDNAME . " field!");
     return FALSE;
@@ -301,11 +308,11 @@ function _guv_schema_add_file_to_index($node, $file, $fieldname, $filename) {
   file_prepare_directory($destination, FILE_CREATE_DIRECTORY);
 
   // Save file.
-  $file = file_save_data(file_get_contents($file_path), $destination . basename($file_path), FILE_EXISTS_RENAME);
-  $file->uid = $node->uid;
-  $file->display = 1;
-  $file->description = "";
-  $file->origname = $filename;
+  $newfile = file_save_data(file_get_contents($file_path), $destination . basename($file_path), FILE_EXISTS_RENAME);
+  $newfile->uid = $node->uid;
+  $newfile->display = 1;
+  $newfile->description = "";
+  $newfile->origname = $file['origname'];
   #$file->filename = pathinfo($file_path, PATHINFO_BASENAME);
   #$file->filemime = file_get_mimetype($file_path);
   // Make it permanent, otherwise it will get deleted later.
@@ -313,7 +320,7 @@ function _guv_schema_add_file_to_index($node, $file, $fieldname, $filename) {
   #echo "Debug: File object:\n";
   #print_r($file);
   // Save file object to make it a 'managed file'.
-  file_save($file);
+  file_save($newfile);
 
   // Now attach file to the file field.
   if (!isset($node->{$fieldname})) {
@@ -322,6 +329,6 @@ function _guv_schema_add_file_to_index($node, $file, $fieldname, $filename) {
   if (!isset($node->{$fieldname}[$node->language])) {
     $node->{$fieldname}[$node->language] = array();
   }
-  $node->{$fieldname}[$node->language][$index] = (array)$file;
+  $node->{$fieldname}[$node->language][$index] = (array)$newfile;
   return TRUE;
 }
