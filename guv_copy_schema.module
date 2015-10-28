@@ -23,7 +23,7 @@ function guv_copy_schema_form($form, &$form_state) {
   $form['#submit'][] = 'guv_copy_schema_submit';
   //we have not yet asked for confirmation
   //asked_confirm should be TRUE - set by the submit handler
-  if(isset($form_state['asked_confirm']) && $form_state['asked_confirm']) {
+  if(isset($form_state['storage']['asked_confirm']) && $form_state['storage']['asked_confirm']) {
     $source_nid = get_nid_from_core_id($form_state['values']['source']);
     $source = node_load($source_nid);
     $source_index_id = $source->field_id[LANGUAGE_NONE][0]['value'];
@@ -49,7 +49,7 @@ function guv_copy_schema_form($form, &$form_state) {
   
   else{
     //we have not yet asked for confirmation
-    $form_state['asked_confirm'] = FALSE;
+    $form_state['storage']['asked_confirm'] = FALSE;
     $form['source'] = array(
       '#title' => t('Source index'), 
       '#maxlength' => 40, 
@@ -81,14 +81,14 @@ function guv_copy_schema_validate($form, &$form_state) {
 }
 
 function guv_copy_schema_submit($form, &$form_state) {
-  if (isset($form_state['asked_confirm']) && $form_state['asked_confirm'] === FALSE) {
+  if (isset($form_state['storage']['asked_confirm']) && $form_state['storage']['asked_confirm'] === FALSE) {
     var_dump(isset($form_state['input']['asked_confirm']) && $form_state['input']['asked_confirm'] === FALSE);
   
     $form_state['storage']['values'] = $form_state['values'];
 
     //we have not yet asked for confirmation
     //setting asked_confirm to TRUE to present the confirmation form isntead.
-    $form_state['asked_confirm'] = TRUE;
+    $form_state['storage']['asked_confirm'] = TRUE;
     $form_state['rebuild'] = TRUE;
 
   }
