@@ -166,9 +166,10 @@ function doCopy($source, $targets , $reason) {
     foreach ($source->{$fieldname}[LANGUAGE_NONE] as $file) {
       
       $uri = $file['uri'];
+      $filename = $file['origname'];
       $file_path = drupal_realpath($uri);
       
-      $ok = add_file_to_index($node, $file, $fieldname);
+      $ok = add_file_to_index($node, $file, $fieldname, $filename);
       
       if (!$ok) {
         drupal_set_message("Error while trying to add file to node {$node->nid}.");
@@ -256,6 +257,7 @@ function find_matching_file_in_node($node, $file, $fieldname) {
   }
 
   $uri = $file['uri'];
+
   $file_path = drupal_realpath($uri);
   $base_filename = basename($file_path);
 
@@ -276,7 +278,7 @@ function find_matching_file_in_node($node, $file, $fieldname) {
   }
 }
 
-function add_file_to_index($node, $file, $fieldname) {
+function add_file_to_index($node, $file, $fieldname, $filename) {
 
   //TODO change this or add it as a constant
 
@@ -305,6 +307,7 @@ function add_file_to_index($node, $file, $fieldname) {
   $file->uid = $node->uid;
   $file->display = 1;
   $file->description = "";
+  $file->origname = $filename;
   #$file->filename = pathinfo($file_path, PATHINFO_BASENAME);
   #$file->filemime = file_get_mimetype($file_path);
   // Make it permanent, otherwise it will get deleted later.
